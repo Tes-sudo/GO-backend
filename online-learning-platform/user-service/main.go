@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/Tes-sudo/online-learning-platform/user-service/handlers"
+	"github.com/Tes-sudo/online-learning-platform/user-service/middleware"
 	"github.com/Tes-sudo/online-learning-platform/user-service/repository"
 )
 
@@ -21,26 +22,28 @@ func main() {
 	// Set up HTTP server
 	mux := http.NewServeMux()
 
-	// Register routes
-	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+	// Wrap handlers with error middleware
+	mux.HandleFunc("/users", middleware.ErrorHandler(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
-			handlers.CreateUserHandler(w, r)
+			handlers.CreateHandler(w, r)
 		case http.MethodGet:
-			handlers.GetUserHandler(w, r)
+			handlers.GetHandler(w, r)
+		case http.MethodPut:
+			handlers.UpdateHandler(w, r)
 		case http.MethodDelete:
-			handlers.DeleteUserHandler(w, r)
+			handlers.DeleteHandler(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	}))
 
 	// TODO: Add more routes as needed
 
 	// Create server
 	server := &http.Server{
 		Addr:    ":8080",
-		Handler: mux,
+			Handler: mux,
 	}
 
 	// Start server

@@ -5,21 +5,30 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Tes-sudo/online-learning-platform/user-service/auth"
+	"github.com/Tes-sudo/online-learning-platform/user-service/errors"
+	"github.com/Tes-sudo/online-learning-platform/user-service/middleware"
 	"github.com/Tes-sudo/online-learning-platform/user-service/models"
 	"github.com/Tes-sudo/online-learning-platform/user-service/repository"
+	"github.com/Tes-sudo/online-learning-platform/user-service/validators"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
-func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+func CreateHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.UserModel
-	err := json.NewDecoder(r.Body).Decode(&user)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		middleware.HandleError(w, errors.ErrInvalidInput)
 		return
 	}
 
-	err = repository.CreateUser(&user)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := validators.ValidateUser(&user); err != nil {
+		middleware.HandleError(w, errors.ErrInvalidInput)
+		return
+	}
+
+	if err := repository.CreateUser(&user); err != nil {
+		middleware.HandleError(w, errors.ErrInternal)
 		return
 	}
 
@@ -27,64 +36,110 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
-func GetUserHandler(w http.ResponseWriter, r *http.Request) {
+func GetHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		middleware.HandleError(w, errors.ErrInvalidInput)
 		return
 	}
 
 	user, err := repository.GetUserByID(uint(id))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		if err == gorm.ErrRecordNotFound {
+			middleware.HandleError(w, errors.ErrNotFound)
+		} else {
+			middleware.HandleError(w, errors.ErrInternal)
+		}
 		return
 	}
 
 	json.NewEncoder(w).Encode(user)
 }
 
-func UpdateUserHandler(w http.ResponseWriter, r *http.Request){
+func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-		}
-	var updatedUser models.UserModel
-	err = json.NewDecoder(r.Body).Decode(&updatedUser)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-		}
-		updatedUser.ID = uint(id)
-		err = repository.UpdateUser(&updatedUser)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(updatedUser)
-}
-
-func DeleteUserHandler(w http.ResponseWriter,r *http.Request){
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil{
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		middleware.HandleError(w, errors.ErrInvalidInput)
 		return
 	}
-	err = repository.DeleteUser(uint(id))
-	if err != nil{
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	var updatedUser models.UserModel
+	if err := json.NewDecoder(r.Body).Decode(&updatedUser); err != nil {
+		middleware.HandleError(w, errors.ErrInvalidInput)
 		return
+	}
+
+	if err := validators.ValidateUser(&updatedUser); err != nil {
+		middleware.HandleError(w, errors.ErrInvalidInput)
+		return
+	}
+
+	updatedUser.ID = uint(id)
+
+	if err := repository.UpdateUser(&updatedUser); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			middleware.HandleError(w, errors.ErrNotFound)
+		} else {
+			middleware.HandleError(w, errors.ErrInternal)
 		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "User deleted successfully"})
-		
+		return
+	}
+
+	json.NewEncoder(w).Encode(updatedUser)
 }
 
+func DeleteHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		middleware.HandleError(w, errors.ErrInvalidInput)
+		return
+	}
 
+	if err := repository.DeleteUser(uint(id)); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			middleware.HandleError(w, errors.ErrNotFound)
+		} else {
+			middleware.HandleError(w, errors.ErrInternal)
+		}
+		return
+	}
 
+	w.WriteHeader(http.StatusNoContent)
+}
 
-// TODO: Add UpdateUserHandler and DeleteUserHandler
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+    var loginRequest struct {
+        Email    string `json:"email"`
+        Password string `json:"password"`
+    }
+
+	if err := json.NewDecoder(r.Body).Decode(&loginRequest); err != nil {
+		middleware.HandleError(w, errors.ErrInvalidInput)
+		return
+	}
+
+	// TODO: Validate credentials against database
+	    user, err := repository.GetUserByEmail(loginRequest.Email)
+	if err != nil || !validatePassword(user.Password, loginRequest.Password) {
+		middleware.HandleError(w, errors.ErrUnauthorized)
+		return
+	}
+
+	token, err := auth.GenerateToken(user)
+	if err != nil {
+		middleware.HandleError(w, errors.ErrInternal)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+// TODO: Implement this function
+func validatePassword(hashedPassword, plainPassword string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
+	return err == nil
+}
