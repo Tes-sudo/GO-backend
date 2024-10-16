@@ -1,16 +1,18 @@
 package models
 
-import (
-	"gorm.io/gorm"
-)
+import "time"
 
 type UserModel struct {
-	gorm.Model
-	Username string `gorm:"uniqueIndex;not null" json:"username"`
-	Email    string `gorm:"uniqueIndex;not null" json:"email"`
-	Password string `json:"-"`
+	ID        uint   `gorm:"primaryKey"`
+	FirstName string `gorm:"not null"`
+	LastName  string `gorm:"not null"`
+	Email     string `gorm:"unique;not null"`
+	Password  string `gorm:"not null"`
+	Username  string `gorm:"unique;not null"`
+	DateOfBirth string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
-
 // TableName overrides the table name used by GORM
 func (UserModel) TableName() string {
 	return "users"

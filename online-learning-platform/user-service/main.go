@@ -22,11 +22,13 @@ func main() {
 	// Set up HTTP server
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/login", middleware.ErrorHandler(handlers.LoginHandler))
+	mux.HandleFunc("/register", middleware.ErrorHandler(handlers.RegisterHandler))
+
 	// Wrap handlers with error middleware
-	mux.HandleFunc("/users", middleware.ErrorHandler(func(w http.ResponseWriter, r *http.Request) {
+	//Protected Routes
+	mux.HandleFunc("/users", middleware.ErrorHandler(middleware.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case http.MethodPost:
-			handlers.CreateHandler(w, r)
 		case http.MethodGet:
 			handlers.GetHandler(w, r)
 		case http.MethodPut:
@@ -36,7 +38,7 @@ func main() {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	}))
+	})))
 
 	// TODO: Add more routes as needed
 
