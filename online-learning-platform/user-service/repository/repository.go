@@ -12,6 +12,12 @@ func GetUserByID(id uint) (*models.UserModel, error) {
 	return &user, err
 }
 
+func GetUserByEmail(email string)(*models.UserModel,error){
+	var user models.UserModel
+	err := DB.Where("email = ?", email).First(&user).Error
+	return &user, err
+}
+
 func UpdateUser(user *models.UserModel) error {
 	return DB.Save(user).Error
 }
